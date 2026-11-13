@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wind-Up Slider</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;margin:0;background:#f4efe6;color:#222}
+.w{max-width:720px;margin:0 auto;padding:12px}
+h1{font-size:1.4rem;margin:.2em 0}
+#banner{padding:8px 10px;border-radius:6px;font-weight:600;margin:8px 0;font-size:.9rem}
+.ok{background:#cdeccb;color:#1c4a1a}.bad{background:#f5c6c6;color:#701c1c}
+label{display:block;margin:10px 0 2px}
+input[type=range]{width:100%;min-height:32px}
+canvas{width:100%;height:auto;background:#fff;border:1px solid #bbb;border-radius:6px;display:block;margin:8px 0}
+button{min-height:44px;padding:0 16px;font-size:1rem;border-radius:6px;border:1px solid #444;background:#e8dcc4;margin-right:6px}
+button:active{background:#cbb98f}
+#read{font-size:.95rem;margin:6px 0}
+#verdict{font-size:1.15rem;font-weight:700;margin:6px 0}
+#ov{font-size:.85rem;margin:6px 0}
+</style></head><body><div class="w">
+<h1>Wind-Up Slider</h1>
+<p>A giant swinging an arm, on a loop. Wind-up is how many frames the arm pulls back. Lag is how many frames it hangs at the top. Total is fixed, so more wind-up means a faster hit. Drag the sliders and watch where heavy turns into just fast.</p>
+<div id="banner">running tests…</div>
+<canvas id="c" width="720" height="300"></canvas>
+<div id="verdict"></div>
+<div id="read"></div>
+<canvas id="g" width="720" height="160"></canvas>
+<label>Wind-up frames: <b id="wv"></b><input id="w" type="range" min="0" max="24" value="10"></label>
+<label>Lag (hold) frames: <b id="lv"></b><input id="l" type="range" min="0" max="12" value="3"></label>
+<label>Total frames: <b id="tv"></b><input id="t" type="range" min="20" max="60" value="36"></label>
+<button id="p">Pause</button><button id="r">Reset</button>
+<div id="ov"></div>
+</div>
+<script>
+const BACK=-70, END=100;
+function ease(x){return x*x*(3-2*x)}
+function makeArm(strictEdge){
+  return function(frame,windup,lag,total){
+    if(frame<=0)return 0;
+    if(frame>=total)return END;
+    if(frame<windup){return BACK*ease(frame/windup)}
+    const holdEnd=windup+lag;
+    if(strictEdge?frame<holdEnd:frame<=holdEnd)return BACK;
+    const sw=total-holdEnd;
+    if(sw<=0)return END;
+    return BACK+(END-BACK)*ease((frame-holdEnd)/sw);
+  };
+}
+const armAngle=makeArm(true), brokenArm=makeArm(false);
+// verdict from peak speed and wind-up: one pure function
+function verdict(w,l,t){
+  const sw=t-w-l;
+  if(sw<=0)return 'No swing frames left';
+  let top=0;
+  for(let f=0;f<t;f++)top=Math.max(top,Math.abs(armAngle(f+1,w,l,t)-armAngle(f,w,l,t)));
+  if(top>25)return 'Too fast to read';
+  if(w<6)return 'Too quick to feel heavy';
+  return 'Heavy';
+}
+function peak(w,l,t){let top=0;for(let f=0;f<t;f++)top=Math.max(top,Math.abs(armAngle(f+1,w,l,t)-armAngle(f,w,l,t)));return top}
+function selfTest(fn){
+  const r=[];
+  r.push(fn(0,10,3,36)===0);
+  r.push(fn(36,10,3,36)===END);
+  r.push(fn(10,10,3,36)===BACK);
+  r.push(fn(12,10,3,36)===BACK);
+  r.push(fn(13,10,3,36)===BACK);
+  r.push(fn(14,10,3,36)>BACK);
+  r.push(fn(5,10,3,36)<0&&fn(5,10,3,36)>BACK);
+  r.push(fn(20,0,0,36)>BACK&&fn(1,0,0,36)>=BACK);
+  return r;
+}
+function runTests(){
+  const a=selfTest(armAngle), b=selfTest(brokenArm);
+  let mono=true;for(let f=13;f<36;f++)if(armAngle(f+1,10,3,36)<armAngle(f,10,3,36))mono=false;
+  const k1=armAngle(11,10,0,36)>BACK, k2=brokenArm(11,10,0,36)>BACK;
+  const v=verdict(10,3,36)==='Heavy'&&verdict(2,0,36)==='Too quick to feel heavy'&&verdict(24,12,36)==='Too fast to read'&&verdict(30,10,36)==='No swing frames left';
+  const realOk=a.every(Boolean)&&mono&&k1&&v;
+  const brokenFails=!k2||!b.every(Boolean);
+  return {realOk,brokenFails,a,mono,k1,v};
+}
+const R=runTests();
+const bn=document.getElementById('banner');
+if(R.realOk&&R.brokenFails){bn.className='ok';bn.textContent='Self-tests pass (broken copy rejected)';}
+else{bn.className='bad';bn.textContent='Self-tests FAILED: '+R.a.map(x=>x?'.':'X').join('')+(R.v?'':' verdict')+(R.brokenFails?'':' weak tests')}
+
+const $=id=>document.getElementById(id);
+const cv=$('c'),cx=cv.getContext('2d'),gv=$('g'),gx=gv.getContext('2d');
+let cur=0,paused=false,timer=null;
+function params(){return{w:+$('w').value,l:+$('l').value,t:+$('t').value}}
+function limb(x,y,ang,len,alpha,col,wd){
+  const rad=(ang-90)*Math.PI/180;
+  const ex=x+Math.cos(rad)*len, ey=y+Math.sin(rad)*len;
+  cx.globalAlpha=alpha;cx.strokeStyle=col;cx.lineWidth=wd;cx.lineCap='round';
+  cx.beginPath();cx.moveTo(x,y);cx.lineTo(ex,ey);cx.stroke();
+  cx.fillStyle=col;cx.beginPath();cx.arc(ex,ey,wd*.9,0,7);cx.fill();
+  cx.globalAlpha=1;
+}
+function render(){
+  const {w,l,t}=params();
+  $('wv').textContent=w;$('lv').textContent=l;$('tv').textContent=t;
+  cx.clearRect(0,0,720,300);
+  cx.fillStyle='#e6dcc8';cx.fillRect(0,270,720,30);
+  const f=Math.min(cur,t), a=armAngle(f,w,l,t);
+  const lean=a/END*8; // body leans into it
+  cx.save();cx.translate(360,270);cx.rotate(lean*Math.PI/180);cx.translate(-360,-270);
+  cx.fillStyle='#8a7a66';
+  cx.fillRect(320,150,30,120);cx.fillRect(366,150,30,120);
+  cx.fillRect(310,70,100,100);
+  cx.beginPath();cx.arc(360,52,28,0,7);cx.fill();
+  cx.fillStyle='#fff';cx.fillRect(348,46,8,6);cx.fillRect(366,46,8,6);
+  cx.fillStyle='#222';cx.fillRect(351,48,3,3);cx.fillRect(369,48,3,3);
+  cx.fillRect(350,62,22,3);
+  const sx=360,sy=90;
+  for(let i=0;i<=12;i++){
+    const ff=Math.round(i*t/12);
+    limb(sx,sy,armAngle(ff,w,l,t),110,0.06+0.14*(i/12),'#b0543a',16);
+  }
+  limb(sx,sy,a,110,1,'#7a3322',18);
+  cx.restore();
+  cx.fillStyle='#222';cx.font='13px system-ui';cx.fillText('frame '+f+' / '+t,10,20);
+  // graph
+  gx.clearRect(0,0,720,160);
+  gx.strokeStyle='#ddd';gx.lineWidth=1;gx.beginPath();
+  const zy=150-(0-BACK)/(END-BACK)*130;gx.moveTo(0,zy);gx.lineTo(720,zy);gx.stroke();
+  gx.strokeStyle='#b0543a';gx.lineWidth=2;gx.beginPath();
+  for(let k=0;k<=t;k++){
+    const px=10+k/t*700, py=150-(armAngle(k,w,l,t)-BACK)/(END-BACK)*130;
+    k?gx.lineTo(px,py):gx.moveTo(px,py);
+  }
+  gx.stroke();
+  const px=10+f/t*700;gx.strokeStyle='#222';gx.beginPath();gx.moveTo(px,0);gx.lineTo(px,160);gx.stroke();
+  const sw=t-w-l;
+  $('verdict').textContent=verdict(w,l,t);
+  $('read').textContent='Swing frames: '+Math.max(sw,0)+' | peak speed: '+peak(w,l,t).toFixed(1)+' deg/frame';
+}
+['w','l','t'].forEach(i=>$(i).addEventListener('input',()=>{cur=0;render()}));
+function tick(){
+  if(paused)return;
+  const t=params().t;
+  cur++;
+  if(cur>t+8)cur=0; // short rest at the end, then loop
+  render();
+}
+timer=setInterval(tick,1000/24);
+$('p').addEventListener('click',()=>{paused=!paused;$('p').textContent=paused?'Play':'Pause'});
+$('r').addEventListener('click',()=>{cur=0;render()});
+render();
+const ov=()=>{const o=document.documentElement.scrollWidth>window.innerWidth;$('ov').textContent=o?'Layout overflows this screen':'';};
+window.addEventListener('resize',ov);ov();
+</script></body></html>
