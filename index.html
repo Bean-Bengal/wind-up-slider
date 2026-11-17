@@ -6,7 +6,7 @@
 body{font-family:system-ui,sans-serif;margin:0;background:#f4efe6;color:#222}
 .w{max-width:720px;margin:0 auto;padding:12px}
 h1{font-size:1.4rem;margin:.2em 0}
-#banner{padding:8px 10px;border-radius:6px;font-weight:600;margin:8px 0;font-size:.9rem}
+#banner,#tb{padding:8px 10px;border-radius:6px;font-weight:600;margin:8px 0;font-size:.9rem}
 .ok{background:#cdeccb;color:#1c4a1a}.bad{background:#f5c6c6;color:#701c1c}
 label{display:block;margin:10px 0 2px}
 input[type=range]{width:100%;min-height:32px}
@@ -16,7 +16,13 @@ button:active{background:#cbb98f}
 #read{font-size:.95rem;margin:6px 0}
 #verdict{font-size:1.15rem;font-weight:700;margin:6px 0}
 #ov{font-size:.85rem;margin:6px 0}
-</style></head><body><div class="w">
+.tw{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;min-width:100%;font-size:.85rem;background:#fff}
+td,th{border:1px solid #bbb;padding:4px 6px;text-align:left;min-width:84px;overflow-wrap:normal;word-break:normal;hyphens:none}
+td:first-child,th:first-child{min-width:150px}
+h2{font-size:1.1rem;margin-top:28px}
+</style></head><body>
+<script data-bean-store>(function(){if(typeof location!=='undefined'&&location&&location.protocol==='about:'&&typeof document!=='undefined'&&document.addEventListener){document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a[href^="#"]');if(!a||a.target==='_blank')return;e.preventDefault();try{location.hash=a.getAttribute('href')}catch(x){}},true)}if(typeof window==='undefined')return;try{window.localStorage.getItem('x');return}catch(e){}var d=Object.assign({},window.__BEAN_SAVED||{});function post(){try{parent.postMessage({type:'bean-store',data:d},'*')}catch(e){}}var ls={getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v);post()},removeItem:function(k){delete d[k];post()},clear:function(){d={};post()},key:function(i){return Object.keys(d)[i]||null}};Object.defineProperty(ls,'length',{get:function(){return Object.keys(d).length}});try{Object.defineProperty(window,'localStorage',{value:ls,configurable:true})}catch(e){}})();</script><div class="w">
 <h1>Wind-Up Slider</h1>
 <p>A giant swinging an arm, on a loop. Wind-up is how many frames the arm pulls back. Lag is how many frames it hangs at the top. Total is fixed, so more wind-up means a faster hit. Drag the sliders and watch where heavy turns into just fast.</p>
 <div id="banner">running tests…</div>
@@ -29,6 +35,10 @@ button:active{background:#cbb98f}
 <label>Total frames: <b id="tv"></b><input id="t" type="range" min="20" max="60" value="36"></label>
 <button id="p">Pause</button><button id="r">Reset</button>
 <div id="ov"></div>
+<h2>Late-hit rule vs broken twins</h2>
+<p>A hit more than 30 ms off the beat (early or late) is late: it resets the combo and the multiplier. Exactly 30 is on time. Every 5 on-time hits adds 1 to the multiplier. Each twin breaks one part and must fail at least one case.</p>
+<div id="tb">running…</div>
+<div class="tw"><table id="tt"></table></div>
 </div>
 <script>
 const BACK=-70, END=100;
@@ -46,7 +56,6 @@ function makeArm(strictEdge){
   };
 }
 const armAngle=makeArm(true), brokenArm=makeArm(false);
-// verdict from peak speed and wind-up: one pure function
 function verdict(w,l,t){
   const sw=t-w-l;
   if(sw<=0)return 'No swing frames left';
@@ -101,7 +110,7 @@ function render(){
   cx.clearRect(0,0,720,300);
   cx.fillStyle='#e6dcc8';cx.fillRect(0,270,720,30);
   const f=Math.min(cur,t), a=armAngle(f,w,l,t);
-  const lean=a/END*8; // body leans into it
+  const lean=a/END*8;
   cx.save();cx.translate(360,270);cx.rotate(lean*Math.PI/180);cx.translate(-360,-270);
   cx.fillStyle='#8a7a66';
   cx.fillRect(320,150,30,120);cx.fillRect(366,150,30,120);
@@ -118,7 +127,6 @@ function render(){
   limb(sx,sy,a,110,1,'#7a3322',18);
   cx.restore();
   cx.fillStyle='#222';cx.font='13px system-ui';cx.fillText('frame '+f+' / '+t,10,20);
-  // graph
   gx.clearRect(0,0,720,160);
   gx.strokeStyle='#ddd';gx.lineWidth=1;gx.beginPath();
   const zy=150-(0-BACK)/(END-BACK)*130;gx.moveTo(0,zy);gx.lineTo(720,zy);gx.stroke();
@@ -138,7 +146,7 @@ function tick(){
   if(paused)return;
   const t=params().t;
   cur++;
-  if(cur>t+8)cur=0; // short rest at the end, then loop
+  if(cur>t+8)cur=0;
   render();
 }
 timer=setInterval(tick,1000/24);
@@ -147,4 +155,53 @@ $('r').addEventListener('click',()=>{cur=0;render()});
 render();
 const ov=()=>{const o=document.documentElement.scrollWidth>window.innerWidth;$('ov').textContent=o?'Layout overflows this screen':'';};
 window.addEventListener('resize',ov);ov();
+
+// ---- late-hit rule and its broken twins ----
+function makeCombo(o){
+  o=o||{};
+  return function(offsets){
+    let combo=0,mult=1;
+    for(const off of offsets){
+      const late=o.onlyPositive?off>30:(o.tieLate?Math.abs(off)>=30:Math.abs(off)>30);
+      if(late){
+        if(!o.noReset)combo=0;
+        mult=o.doubleMult?mult*2:1;
+      }else{
+        combo++;
+        mult=1+Math.floor(combo/5);
+      }
+    }
+    return {combo,mult};
+  };
+}
+const comboReal=makeCombo();
+const twins=[
+  {name:'late hit never resets combo',fn:makeCombo({noReset:true})},
+  {name:'late hit doubles the multiplier',fn:makeCombo({doubleMult:true})},
+  {name:'exactly 30 ms counted as late',fn:makeCombo({tieLate:true})},
+  {name:'early hits never count as late',fn:makeCombo({onlyPositive:true})}
+];
+const cases=[
+  {n:'five on time, one exactly 30',h:[0,10,-5,20,30],e:{combo:5,mult:2}},
+  {n:'two on time, then 31 late',h:[0,10,31],e:{combo:0,mult:1}},
+  {n:'on time, then 31 early',h:[10,20,-31],e:{combo:0,mult:1}},
+  {n:'six on time, late, one on time',h:[1,2,3,4,5,6,31,2],e:{combo:1,mult:1}},
+  {n:'five on time, then late',h:[1,2,3,4,5,31],e:{combo:0,mult:1}},
+  {n:'empty',h:[],e:{combo:0,mult:1}}
+];
+function passes(fn){return cases.map(c=>{const r=fn(c.h);return r.combo===c.e.combo&&r.mult===c.e.mult})}
+(function(){
+  const tbn=$('tb'),tt=$('tt');
+  try{
+    const real=passes(comboReal);
+    const rows=twins.map(t=>({name:t.name,p:passes(t.fn)}));
+    const realOk=real.every(Boolean), allCaught=rows.every(r=>r.p.some(x=>!x));
+    let html='<tr><th>Version</th>'+cases.map(c=>'<th>'+c.n+'</th>').join('')+'<th>Caught?</th></tr>';
+    html+='<tr><td>real rule</td>'+real.map(x=>'<td>'+(x?'pass':'FAIL')+'</td>').join('')+'<td>-</td></tr>';
+    rows.forEach(r=>{html+='<tr><td>'+r.name+'</td>'+r.p.map(x=>'<td>'+(x?'pass':'fail')+'</td>').join('')+'<td>'+(r.p.some(x=>!x)?'yes':'NO')+'</td></tr>'});
+    tt.innerHTML=html;
+    if(realOk&&allCaught){tbn.className='ok';tbn.textContent='Late-hit rule passes; all '+twins.length+' broken twins caught';}
+    else{tbn.className='bad';tbn.textContent='Late-hit checks FAILED: '+(realOk?'':'real rule wrong ')+(allCaught?'':'a twin slipped through');}
+  }catch(e){tbn.className='bad';tbn.textContent='Error: '+e.message}
+})();
 </script></body></html>
