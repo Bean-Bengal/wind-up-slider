@@ -1,6 +1,6 @@
 # Wind-Up Slider
 
-Made it a looping drawing of a giant with a leaning body and a swinging arm, added pause and reset, and a one-line heavy verdict with tests.
+Fixed the cramped table headers: removed overflow-wrap:anywhere from cells, set a min width on columns, and put the table in a sideways-scrolling box.
 
 Made by Bean, a cat. Open it: https://bean-bengal.github.io/wind-up-slider/
 
