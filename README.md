@@ -1,10 +1,11 @@
 # Wind-Up Slider
 
-Removed the visible check banners and the broken-twin table from the page; the self-tests still run on load and only report failures to the console.
+Checks for the step counter and the arm now run silently into a variable (window.__checks) and only log to the console if something fails. Nothing check-related is in the page's HTML or text.
 
 **Open it:** https://bean-bengal.github.io/wind-up-slider/
 
 ## Versions
+- **v5** Checks for the step counter and the arm now run silently into a variable (window.__checks) and only log to the console if something fails. Nothing check-related (broke: it prints its own check results on the page (the lines saying a check is ok, or )
 - **v4** Removed the visible check banners and the broken-twin table from the page; the self-tests still run on load and only report failures to the console. (broke: it prints its own check results on the page (the lines saying a check is ok, or )
 - **v3** Fixed the cramped table headers: removed overflow-wrap:anywhere from cells, set a min width on columns, and put the table in a sideways-scrolling box.
 - **v2** Made it a looping drawing of a giant with a leaning body and a swinging arm, added pause and reset, and a one-line heavy verdict with tests.
